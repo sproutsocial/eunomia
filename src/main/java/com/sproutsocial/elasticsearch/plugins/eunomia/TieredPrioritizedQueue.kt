@@ -4,7 +4,6 @@ import org.eclipse.collections.api.RichIterable
 import org.eclipse.collections.api.block.predicate.Predicate
 import org.eclipse.collections.api.list.ListIterable
 import org.eclipse.collections.impl.factory.Lists
-import org.eclipse.collections.impl.lazy.CompositeIterable
 import java.util.*
 
 class TieredPrioritizedQueue {
@@ -116,29 +115,21 @@ class PriorityTier {
 }
 
 class PriorityGroup(val name: String) {
-    private val inFlightQueue = LinkedList<PrioritizedRunnable>()
     private val requestQueue = LinkedList<PrioritizedRunnable>()
-    val isEmpty: Boolean get() = inFlightQueue.isEmpty() && requestQueue.isEmpty()
+    val isEmpty: Boolean get() = requestQueue.isEmpty()
 
     fun offer(runnable: PrioritizedRunnable) {
-        when (runnable.inFlight) {
-            true  -> inFlightQueue.add(runnable)
-            false -> requestQueue.add(runnable)
-        }
+        requestQueue.add(runnable)
     }
 
-    fun poll(): PrioritizedRunnable? =
-            inFlightQueue.pollFirst() ?:
-            requestQueue.pollFirst()
+    fun poll(): PrioritizedRunnable? = requestQueue.pollFirst()
 
     fun extractIf(filter: (PrioritizedRunnable) -> Boolean): RichIterable<PrioritizedRunnable> {
-        return CompositeIterable.with(
-                inFlightQueue.extractIf(filter),
-                requestQueue.extractIf(filter))
+        return requestQueue.extractIf(filter)
     }
 }
 
-private fun <T> MutableIterable<T>.extractIf(filter: (T) -> Boolean): MutableIterable<T> {
+private fun <T> MutableIterable<T>.extractIf(filter: (T) -> Boolean): RichIterable<T> {
     val iterator = this.iterator()
     val result = Lists.mutable.empty<T>()
 
