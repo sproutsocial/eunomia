@@ -5,30 +5,39 @@ import org.eclipse.collections.api.block.predicate.Predicate
 import org.eclipse.collections.api.list.ListIterable
 import org.eclipse.collections.impl.factory.Lists
 import java.util.*
+import java.util.concurrent.TimeUnit
 
-class TieredPrioritizedQueue {
-    var deadlineInNanos: Long = 10 * 1000 * 1000
-    var reprioritizeIntervalInNanos: Long = 1 * 1000 * 1000
+interface TieredPrioritizedQueueView {
+    val tiers: ListIterable<PriorityTierView>
+}
+
+class TieredPrioritizedQueue : TieredPrioritizedQueueView {
+    var deadlineInNanos: Long = TimeUnit.SECONDS.toNanos(10)
+    var reprioritizeIntervalInNanos: Long = TimeUnit.SECONDS.toNanos(1)
 
     private var nextReprioritizeTimestampNano: Long = 0
 
-    private val tiers: ListIterable<PriorityTier> = Lists.immutable.of(
-            PriorityTier(), // very high
-            PriorityTier(), // high
-            PriorityTier(), // normal
-            PriorityTier(), // low
-            PriorityTier()) // very low
+    private val _tiers: ListIterable<PriorityTier> = Lists.immutable.of(
+            PriorityTier("very high"),
+            PriorityTier("high"),
+            PriorityTier("normal"),
+            PriorityTier("low"),
+            PriorityTier("very low"))
+
+    @Suppress("UNCHECKED_CAST")
+    override val tiers: ListIterable<PriorityTierView> get() = _tiers as ListIterable<PriorityTierView>
+
 
     fun offer(prioritizedRunnable: PrioritizedRunnable) {
         val targetTier = calculateTierIndex(prioritizedRunnable)
-        tiers[targetTier].offer(prioritizedRunnable)
+        _tiers[targetTier].offer(prioritizedRunnable)
     }
 
     private fun calculateTierIndex(prioritizedRunnable: PrioritizedRunnable): Int =
             calculateTierIndexFromTimestamp(prioritizedRunnable, System.nanoTime())
 
     private fun calculateTierIndexFromTimestamp(prioritizedRunnable: PrioritizedRunnable, timestampInNanos: Long): Int {
-        val deltaTimeNano = prioritizedRunnable.receivedTimestampInNanos - timestampInNanos
+        val deltaTimeNano = timestampInNanos - prioritizedRunnable.receivedTimestampInNanos
         val priorityShift = (deltaTimeNano / deadlineInNanos).toInt()
         return Math.max(0, prioritizedRunnable.priority - priorityShift)
     }
@@ -37,7 +46,7 @@ class TieredPrioritizedQueue {
     fun poll(): PrioritizedRunnable? {
         reprioritize()
 
-        for (tier in tiers) {
+        for (tier in _tiers) {
             return tier.poll() ?: continue
         }
 
@@ -52,8 +61,8 @@ class TieredPrioritizedQueue {
 
         val reprioritizableRunnables = Lists.mutable.empty<PrioritizedRunnable>()
 
-        for (tierIndex in 1 until tiers.size()) {
-            tiers[tierIndex]
+        for (tierIndex in 1 until _tiers.size()) {
+            _tiers[tierIndex]
                     .extractIf { calculateTierIndexFromTimestamp(it, nowInNanos) != tierIndex }
                     .into(reprioritizableRunnables)
         }
@@ -62,8 +71,19 @@ class TieredPrioritizedQueue {
     }
 }
 
-class PriorityTier {
-    private val priorityGroups = Lists.mutable.empty<PriorityGroup>()
+interface PriorityTierView {
+    val name: String
+    val priorityGroups: ListIterable<PriorityGroupView>
+}
+
+
+
+class PriorityTier(override val name: String) : PriorityTierView {
+    private val _priorityGroups = Lists.mutable.empty<PriorityGroup>()
+
+    @Suppress("UNCHECKED_CAST")
+    override val priorityGroups: ListIterable<PriorityGroupView> get() = _priorityGroups as ListIterable<PriorityGroupView>
+
     private var nextGroupIndex = 0
     private var shouldOptimize = false
 
@@ -72,19 +92,19 @@ class PriorityTier {
     }
 
     fun poll(): PrioritizedRunnable? {
-        if (priorityGroups.isEmpty) { return null }
+        if (_priorityGroups.isEmpty) { return null }
 
         while (true) {
-            if (nextGroupIndex >= priorityGroups.size) {
+            if (nextGroupIndex >= _priorityGroups.size) {
                 if (shouldOptimize) { optimize() }
                 nextGroupIndex = 0
                 shouldOptimize = false
 
-                if (priorityGroups.isEmpty) { return null }
+                if (_priorityGroups.isEmpty) { return null }
                 continue
             }
 
-            val prioritizedRunnable = priorityGroups[nextGroupIndex++].poll()
+            val prioritizedRunnable = _priorityGroups[nextGroupIndex++].poll()
 
             when (prioritizedRunnable) {
                 null -> shouldOptimize = true
@@ -94,38 +114,45 @@ class PriorityTier {
     }
 
     private fun optimize() {
-        priorityGroups.removeIf(Predicate { it.isEmpty })
+        _priorityGroups.removeIf(Predicate { it.isEmpty })
     }
 
     private fun findOrCreatePriorityGroup(name: String): PriorityGroup {
-        return (priorityGroups
+        return (_priorityGroups
                 .firstOrNull { it.name == name }
                 ?: createNewPriorityGroup(name))
     }
 
     private fun createNewPriorityGroup(name: String): PriorityGroup {
         return PriorityGroup(name).also {
-            priorityGroups.add(it)
+            _priorityGroups.add(it)
         }
     }
 
     fun extractIf(filter: (PrioritizedRunnable) -> Boolean): RichIterable<PrioritizedRunnable> {
-        return priorityGroups.flatCollect { it.extractIf(filter) }
+        return _priorityGroups.flatCollect { it.extractIf(filter) }
     }
 }
 
-class PriorityGroup(val name: String) {
-    private val requestQueue = LinkedList<PrioritizedRunnable>()
-    val isEmpty: Boolean get() = requestQueue.isEmpty()
+interface PriorityGroupView {
+    val name: String
+    val requestQueue: List<PrioritizedRunnable>
+}
+
+class PriorityGroup(override val name: String): PriorityGroupView {
+    private val _requestQueue = LinkedList<PrioritizedRunnable>()
+    override val requestQueue: List<PrioritizedRunnable> get() = _requestQueue
+
+    val isEmpty: Boolean get() = _requestQueue.isEmpty()
 
     fun offer(runnable: PrioritizedRunnable) {
-        requestQueue.add(runnable)
+        _requestQueue.add(runnable)
     }
 
-    fun poll(): PrioritizedRunnable? = requestQueue.pollFirst()
+    fun poll(): PrioritizedRunnable? = _requestQueue.pollFirst()
 
     fun extractIf(filter: (PrioritizedRunnable) -> Boolean): RichIterable<PrioritizedRunnable> {
-        return requestQueue.extractIf(filter)
+        return _requestQueue.extractIf(filter)
     }
 }
 

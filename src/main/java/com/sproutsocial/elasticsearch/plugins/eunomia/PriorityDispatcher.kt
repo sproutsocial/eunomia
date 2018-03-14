@@ -1,5 +1,6 @@
 package com.sproutsocial.elasticsearch.plugins.eunomia
 
+import org.eclipse.collections.api.list.ListIterable
 import org.eclipse.collections.impl.factory.Lists
 import org.elasticsearch.common.component.AbstractComponent
 import org.elasticsearch.common.inject.Inject
@@ -7,6 +8,7 @@ import org.elasticsearch.common.settings.Settings
 import org.elasticsearch.common.util.concurrent.EsExecutors
 import org.elasticsearch.node.settings.NodeSettingsService
 import org.elasticsearch.threadpool.ThreadPool
+import java.util.concurrent.TimeUnit
 
 class PriorityDispatcher
     @Inject constructor(
@@ -18,10 +20,15 @@ class PriorityDispatcher
 
     companion object {
         const val SETTINGS_MAX_ACTIVE_THREADS_KEY = "eunomia.priorityDispatcher.maxActiveThreads"
+        const val SETTINGS_DEADLINE_KEY = "eunomia.priorityDispatcher.deadlineInSeconds"
     }
 
-    private val pendingQueue = TieredPrioritizedQueue()
-    private val activeRunnables = Lists.mutable.empty<PrioritizedRunnable>()
+    private val _pendingQueue = TieredPrioritizedQueue()
+    val pendingQueue: TieredPrioritizedQueueView get() = _pendingQueue
+
+    private val _activeRunnables = Lists.mutable.empty<PrioritizedRunnable>()
+    val activeRunables: ListIterable<PrioritizedRunnable> get() = _activeRunnables
+
     private var maxActiveThreads = Math.max(1, EsExecutors.boundedNumberOfProcessors(settings) - 2)
     private var effectiveSettings: Settings = settings
 
@@ -35,6 +42,7 @@ class PriorityDispatcher
 
     private fun updateComponentSettings(settings: Settings) {
         maxActiveThreads = settings.getAsInt(SETTINGS_MAX_ACTIVE_THREADS_KEY, Math.max(1, EsExecutors.boundedNumberOfProcessors(settings) - 2))
+        _pendingQueue.deadlineInNanos = TimeUnit.SECONDS.toNanos(settings.getAsLong(SETTINGS_DEADLINE_KEY, 10))
     }
 
     @Synchronized
@@ -45,21 +53,21 @@ class PriorityDispatcher
             runRunnable(prioritizedRunnable)
         }
         else {
-            pendingQueue.offer(prioritizedRunnable)
+            _pendingQueue.offer(prioritizedRunnable)
             doScheduling()
         }
     }
 
     private fun doScheduling() {
-        while (activeRunnables.size < maxActiveThreads) {
-            val nextRunnable = pendingQueue.poll() ?: return
+        while (_activeRunnables.size < maxActiveThreads) {
+            val nextRunnable = _pendingQueue.poll() ?: return
 
             runRunnable(nextRunnable)
         }
     }
 
     private fun runRunnable(nextRunnable: PrioritizedRunnable) {
-        activeRunnables.add(nextRunnable)
+        _activeRunnables.add(nextRunnable)
         threadPool.executor(nextRunnable.executor).execute {
             try {
                 nextRunnable.run(onComplete = { completeRunnable(nextRunnable) })
@@ -72,7 +80,7 @@ class PriorityDispatcher
     @Synchronized
     private fun completeRunnable(prioritizedRunnable: PrioritizedRunnable) {
         groupThrottler.completed(prioritizedRunnable)
-        activeRunnables.remove(prioritizedRunnable)
+        _activeRunnables.remove(prioritizedRunnable)
         doScheduling()
     }
 }

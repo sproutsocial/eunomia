@@ -18,7 +18,7 @@ class PrioritizingTransportService
 
     companion object {
         const val EUNOMIA_PRIORITY_LEVEL_HEADER_KEY = "eunomia-priority-level"
-        const val EUNOMIA_PRIORITY_KEY_HEADER_KEY = "eunomia-priority-key"
+        const val EUNOMIA_PRIORITY_KEY_HEADER_KEY = "eunomia-priority-group"
         const val EUNOMIA_PRIORITY_KEY_DEFAULT_VALUE = "_default_"
         const val EUNOMIA_PRIORITY_IN_PROGRESS_HEADER_KEY = "eunomia-priority-in-progress"
         const val SETTINGS_IS_ENABLED_KEY = "eunomia.requestPrioritizing.enabled"
@@ -111,7 +111,6 @@ class PrioritizingTransportService
         : TransportRequestHandler<REQUEST>() {
 
         override fun messageReceived(request: REQUEST, channel: TransportChannel) {
-            logger.warn("priority message received ${request.headers}")
             priorityDispatcher.schedule(DelegatingCommand(realRequestHandler, request, channel))
         }
     }
@@ -120,6 +119,7 @@ class PrioritizingTransportService
             private val realRequestHandler: RequestHandlerRegistry<REQUEST>,
             private val request: REQUEST,
             private val channel: TransportChannel) : PrioritizedRunnable {
+        override val action: String = realRequestHandler.action
         override val inFlight: Boolean = request.getHeader<Boolean>(EUNOMIA_PRIORITY_IN_PROGRESS_HEADER_KEY) ?: false
         override val executor: String = realRequestHandler.executor
         override val priority: Int = parseRequestPriority(request)

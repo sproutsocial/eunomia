@@ -1,6 +1,7 @@
 package com.sproutsocial.elasticsearch.plugins.eunomia
 
 import org.codelibs.elasticsearch.runner.ElasticsearchClusterRunner
+import org.elasticsearch.action.index.IndexRequest
 import org.elasticsearch.common.settings.Settings
 import org.elasticsearch.index.query.QueryBuilders
 import org.junit.After
@@ -8,6 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
+import java.util.*
 
 
 /**
@@ -68,24 +70,59 @@ class SandboxTests {
             }
         }
 
+        runner.ensureGreen()
+
+        (0..1000).forEach {
+            Thread.sleep(100)
+            doSomethingRandom(runner)
+        }
+
+        while (true) { Thread.sleep(1000) }
+    }
+
+    private fun doSomethingRandom(runner: ElasticsearchClusterRunner) {
+        when (Random().nextInt(2)) {
+            0 -> doSearch(runner)
+            1 -> doBulkIndex(runner)
+        }
+    }
+
+    private fun doBulkIndex(runner: ElasticsearchClusterRunner) {
+        runner.client().prepareBulk()
+                .apply { (0..100).forEach { this.add(buildRandomIndexRequest(runner)) } }
+                .putHeader("eunomia-priority-level", pickRandom("very low", "low", "normal"))
+                .putHeader("eunomia-priority-group", pickRandom("d"))
+                .execute()
+    }
+
+    private fun buildRandomIndexRequest(runner: ElasticsearchClusterRunner): IndexRequest {
+        val nextId = Random().nextInt(100)
+
+        return runner.client()
+                .prepareIndex("my-index", "my-type", nextId.toString())
+                .setSource(createDocument(nextId, Random().nextInt()))
+                .request()
+    }
+
+    private fun doSearch(runner: ElasticsearchClusterRunner) {
         runner.client()
                 .prepareSearch("my-index")
                 .setTypes("my-type")
                 .setQuery(QueryBuilders.matchAllQuery())
                 .setSize(100)
-                .putHeader("eunomia-priority-level", "very high")
-                .setPreference("_primary_first")
+                .putHeader("eunomia-priority-level", pickRandom("very high", "high", "normal"))
+                .putHeader("eunomia-priority-group", pickRandom("a", "b", "c"))
                 .execute()
-                .actionGet()
-                .hits
-                .hits
-                .forEach { println(it.source) }
     }
 
-    private fun createDocument(id: Int): String = """
+    private fun <T> pickRandom(vararg options: T): T {
+        return options[Random().nextInt(options.size)]
+    }
+
+    private fun createDocument(id: Int, value: Int? = id): String = """
         {
             "key": "key-$id",
-            "value": "value-$id"
+            "value": "value-$value"
         }
         """
 
