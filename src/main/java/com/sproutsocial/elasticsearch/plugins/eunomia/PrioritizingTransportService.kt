@@ -120,7 +120,7 @@ class PrioritizingTransportService
             private val request: REQUEST,
             private val channel: TransportChannel) : PrioritizedRunnable {
         override val action: String = realRequestHandler.action
-        override val inFlight: Boolean = request.getHeader<Boolean>(EUNOMIA_PRIORITY_IN_PROGRESS_HEADER_KEY) ?: false
+        override val inFlight: Boolean get() = request.getHeader<Boolean>(EUNOMIA_PRIORITY_IN_PROGRESS_HEADER_KEY) ?: false
         override val executor: String = realRequestHandler.executor
         override val priority: Int = parseRequestPriority(request)
         override val priorityGroup: String = request.getHeader<String>(EUNOMIA_PRIORITY_KEY_HEADER_KEY) ?: EUNOMIA_PRIORITY_KEY_DEFAULT_VALUE
@@ -136,8 +136,8 @@ class PrioritizingTransportService
             catch (ex: Exception) {
                 try {
                     delegateChannel.sendResponse(ex)
-                } catch (e1: Exception) {
-                    logger.warn("failed to notify channel of error message for action [${realRequestHandler.action}]", e1)
+                } catch (nestedEx: Exception) {
+                    logger.warn("failed to notify channel of error message for action [${realRequestHandler.action}]", nestedEx)
                     logger.warn("actual exception", ex)
                 }
             }
