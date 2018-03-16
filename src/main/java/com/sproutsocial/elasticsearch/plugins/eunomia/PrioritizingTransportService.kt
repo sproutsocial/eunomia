@@ -58,16 +58,15 @@ class PrioritizingTransportService
         super.registerRequestHandler(action, request, executor, forceExecution, handler)
 
         // there is no point in prioritizing actions that are intended to be run in-line with the current requests;
-        // also, these requests tend to be very low CPU and low latency. Also avoid forceExecutions since they need
-        // to be ran immediately and tend to be related to data consistency
-        if (forceExecution || executor == ThreadPool.Names.SAME) { return }
+        // also, these requests tend to be very low CPU and low latency.
+        if (executor == ThreadPool.Names.SAME) { return }
 
         val realRequestHandler = getRequestHandler(action)
         super.registerRequestHandler(
                 "$action[prioritized]",
                 request,
                 ThreadPool.Names.SAME,
-                false,
+                forceExecution,
                 PriorityTransportHandler(realRequestHandler))
     }
 
@@ -120,6 +119,7 @@ class PrioritizingTransportService
             private val request: REQUEST,
             private val channel: TransportChannel) : PrioritizedRunnable {
         override val action: String = realRequestHandler.action
+        override val isForceExecuted: Boolean = realRequestHandler.isForceExecution
         override val inFlight: Boolean get() = request.getHeader<Boolean>(EUNOMIA_PRIORITY_IN_PROGRESS_HEADER_KEY) ?: false
         override val executor: String = realRequestHandler.executor
         override val priority: Int = parseRequestPriority(request)

@@ -71,7 +71,7 @@ class PrioritizedGroupThrottler @Inject constructor(
     }
 
     private fun doThrottleCheck(prioritizedRunnable: PrioritizedRunnable, groupSize: Int) {
-        if (groupSize >= maxGroupSize) {
+        if (groupSize >= maxGroupSize && !prioritizedRunnable.isForceExecuted) {
             logger.warn("rejecting ${prioritizedRunnable.action} for ${prioritizedRunnable.priorityGroup} because the the priority group is full")
             throw EsRejectedExecutionException("could not run $prioritizedRunnable because group size for ${prioritizedRunnable.priorityGroup} has exceeded $maxGroupSize")
         }

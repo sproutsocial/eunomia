@@ -68,7 +68,7 @@ class SandboxTests {
 
     @Test
     @Throws(Exception::class)
-    fun testTempestShardsAllocator() {
+    fun smokeTest() {
         val settings = Settings.settingsBuilder()
                 .put("index.number_of_replicas", "1")
                 .put("index.number_of_shards", "3")
@@ -89,7 +89,7 @@ class SandboxTests {
         client.addTransportAddress(InetSocketTransportAddress(InetAddress.getByName("localhost"), 9301))
 
         (0..1000).forEach {
-            Thread.sleep(100)
+            Thread.sleep(200)
             doSomethingRandom(runner)
         }
 

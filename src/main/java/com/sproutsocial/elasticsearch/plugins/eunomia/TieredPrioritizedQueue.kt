@@ -11,18 +11,18 @@ interface TieredPrioritizedQueueView {
     val tiers: ListIterable<PriorityTierView>
 }
 
-class TieredPrioritizedQueue : TieredPrioritizedQueueView {
+class TieredPrioritizedQueue(activeRunables: ListIterable<PrioritizedRunnable>) : TieredPrioritizedQueueView {
     var deadlineInNanos: Long = TimeUnit.SECONDS.toNanos(10)
     var reprioritizeIntervalInNanos: Long = TimeUnit.SECONDS.toNanos(1)
 
     private var nextReprioritizeTimestampNano: Long = 0
 
     private val _tiers: ListIterable<PriorityTier> = Lists.immutable.of(
-            PriorityTier("very high"),
-            PriorityTier("high"),
-            PriorityTier("normal"),
-            PriorityTier("low"),
-            PriorityTier("very low"))
+            PriorityTier("very high", activeRunables),
+            PriorityTier("high", activeRunables),
+            PriorityTier("normal", activeRunables),
+            PriorityTier("low", activeRunables),
+            PriorityTier("very low", activeRunables))
 
     @Suppress("UNCHECKED_CAST")
     override val tiers: ListIterable<PriorityTierView> get() = _tiers as ListIterable<PriorityTierView>
@@ -34,14 +34,16 @@ class TieredPrioritizedQueue : TieredPrioritizedQueueView {
     }
 
     private fun calculateTierIndex(prioritizedRunnable: PrioritizedRunnable): Int =
-            calculateTierIndexFromTimestamp(prioritizedRunnable, System.nanoTime())
+            when (prioritizedRunnable.inFlight) {
+                true -> 0
+                else -> calculateTierIndexFromTimestamp(prioritizedRunnable, System.nanoTime())
+            }
 
     private fun calculateTierIndexFromTimestamp(prioritizedRunnable: PrioritizedRunnable, timestampInNanos: Long): Int {
         val deltaTimeNano = timestampInNanos - prioritizedRunnable.receivedTimestampInNanos
         val priorityShift = (deltaTimeNano / deadlineInNanos).toInt()
         return Math.max(0, prioritizedRunnable.priority - priorityShift)
     }
-
 
     fun poll(): PrioritizedRunnable? {
         reprioritize()
@@ -76,9 +78,8 @@ interface PriorityTierView {
     val priorityGroups: ListIterable<PriorityGroupView>
 }
 
-
-
-class PriorityTier(override val name: String) : PriorityTierView {
+class PriorityTier(override val name: String,
+                   private val activeRunables: ListIterable<PrioritizedRunnable>) : PriorityTierView {
     private val _priorityGroups = Lists.mutable.empty<PriorityGroup>()
 
     @Suppress("UNCHECKED_CAST")
@@ -87,33 +88,27 @@ class PriorityTier(override val name: String) : PriorityTierView {
     private var nextGroupIndex = 0
     private var shouldOptimize = false
 
+    private val random = Random()
+
     fun offer(runnable: PrioritizedRunnable) {
         findOrCreatePriorityGroup(runnable.priorityGroup).offer(runnable)
     }
 
     fun poll(): PrioritizedRunnable? {
-        if (_priorityGroups.isEmpty) { return null }
+        optimize()
+        if (priorityGroups.isEmpty) { return null }
+        if (priorityGroups.size() == 1) { return _priorityGroups[0].poll() }
 
-        while (true) {
-            if (nextGroupIndex >= _priorityGroups.size) {
-                if (shouldOptimize) { optimize() }
-                nextGroupIndex = 0
-                shouldOptimize = false
+        val activeGroups = activeRunables.aggregateBy({it.priorityGroup}, {0}, {v, _ -> v + 1})
+        val pendingGroupUsage = _priorityGroups.collect { Pair(it, activeGroups.getIfAbsent(it.name, {0})) }
+        val minUsage = pendingGroupUsage.collectInt { it.second }.min()
+        val candidateGroups = pendingGroupUsage.collectIf({ it.second == minUsage }, {it.first})
 
-                if (_priorityGroups.isEmpty) { return null }
-                continue
-            }
-
-            val prioritizedRunnable = _priorityGroups[nextGroupIndex++].poll()
-
-            when (prioritizedRunnable) {
-                null -> shouldOptimize = true
-                else -> return prioritizedRunnable
-            }
-        }
+        return candidateGroups[random.nextInt(candidateGroups.size)].poll()
     }
 
     private fun optimize() {
+        if (_priorityGroups.isEmpty) { return }
         _priorityGroups.removeIf(Predicate { it.isEmpty })
     }
 

@@ -23,12 +23,12 @@ class PriorityDispatcher
         const val SETTINGS_DEADLINE_KEY = "eunomia.priorityDispatcher.deadlineInSeconds"
     }
 
-    private val _pendingQueue = TieredPrioritizedQueue()
-    val pendingQueue: TieredPrioritizedQueueView get() = _pendingQueue
-
     private val _activeRunnables = Lists.mutable.empty<PrioritizedRunnable>()
     val activeRunables: ListIterable<PrioritizedRunnable> get() = _activeRunnables
 
+    private val _pendingQueue = TieredPrioritizedQueue(activeRunables)
+    val pendingQueue: TieredPrioritizedQueueView get() = _pendingQueue
+    
     private var maxActiveThreads = Math.max(1, EsExecutors.boundedNumberOfProcessors(settings) - 2)
     private var effectiveSettings: Settings = settings
 
@@ -49,13 +49,8 @@ class PriorityDispatcher
     fun schedule(prioritizedRunnable: PrioritizedRunnable) {
         groupThrottler.offer(prioritizedRunnable)
 
-        if (prioritizedRunnable.inFlight) {
-            runRunnable(prioritizedRunnable)
-        }
-        else {
-            _pendingQueue.offer(prioritizedRunnable)
-            doScheduling()
-        }
+        _pendingQueue.offer(prioritizedRunnable)
+        doScheduling()
     }
 
     private fun doScheduling() {
