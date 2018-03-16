@@ -2,13 +2,16 @@ package com.sproutsocial.elasticsearch.plugins.eunomia
 
 import org.codelibs.elasticsearch.runner.ElasticsearchClusterRunner
 import org.elasticsearch.action.index.IndexRequest
+import org.elasticsearch.client.transport.TransportClient
 import org.elasticsearch.common.settings.Settings
+import org.elasticsearch.common.transport.InetSocketTransportAddress
 import org.elasticsearch.index.query.QueryBuilders
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
+import java.net.InetAddress
 import java.util.*
 
 
@@ -17,6 +20,18 @@ import java.util.*
  */
 class SandboxTests {
     private val runner = ElasticsearchClusterRunner()
+    private val client = buildClient()
+
+    private fun buildClient(): TransportClient {
+        val settings = Settings.settingsBuilder().put("cluster.name", runner.clusterName)
+                .put("client.transport.ping_timeout", "120s")
+                .put("client.transport.nodes_sampler_interval", "300s")
+                .put("threadpool.generic.size", 1)
+                .put("es.processors.override", 1)
+                .build()
+
+        return TransportClient.builder().settings(settings).build()
+    }
 
     @Before
     @Throws(Exception::class)
@@ -71,6 +86,7 @@ class SandboxTests {
         }
 
         runner.ensureGreen()
+        client.addTransportAddress(InetSocketTransportAddress(InetAddress.getByName("localhost"), 9301))
 
         (0..1000).forEach {
             Thread.sleep(100)

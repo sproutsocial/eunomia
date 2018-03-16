@@ -6,13 +6,19 @@
 
     <groupId>com.sproutsocial.elasticsearch.plugin</groupId>
     <artifactId>eunomia</artifactId>
-    <version>1.0.0-SNAPSHOT</version>
+    <version>1.0.0-ES${elasticsearch.version}-SNAPSHOT</version>
+
+    <licenses>
+        <license>
+            <name>The MIT License (MIT)</name>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
 
     <properties>
         <kotlin.version>1.2.30</kotlin.version>
         <elasticsearch.version>2.3.2</elasticsearch.version>
         <groovy_all.version>2.4.14</groovy_all.version>
-
     </properties>
 
     <dependencies>
@@ -121,6 +127,25 @@
                 </configuration>
             </plugin>
             <plugin>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <appendAssemblyId>false</appendAssemblyId>
+                    <outputDirectory>${project.build.directory}/releases/</outputDirectory>
+                    <descriptors>
+                        <descriptor>src/main/assembiles/plugin-assembly.xml</descriptor>
+                    </descriptors>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <!-- The gmavenplus plugin is used to compile Groovy code (Spock) -->
                 <groupId>org.codehaus.gmavenplus</groupId>
                 <artifactId>gmavenplus-plugin</artifactId>
@@ -128,7 +153,6 @@
                 <executions>
                     <execution>
                         <goals>
-                            <goal>compile</goal>
                             <goal>compileTests</goal>
                         </goals>
                     </execution>
@@ -136,6 +160,4 @@
             </plugin>
         </plugins>
     </build>
-
-
 </project>
