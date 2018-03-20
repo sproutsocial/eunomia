@@ -4,6 +4,7 @@ import org.eclipse.collections.api.RichIterable
 import org.eclipse.collections.api.block.predicate.Predicate
 import org.eclipse.collections.api.list.ListIterable
 import org.eclipse.collections.impl.factory.Lists
+import org.eclipse.collections.impl.list.mutable.FastList
 import java.util.*
 import java.util.concurrent.TimeUnit
 
@@ -11,7 +12,8 @@ interface TieredPrioritizedQueueView {
     val tiers: ListIterable<PriorityTierView>
 }
 
-class TieredPrioritizedQueue(activeRunables: ListIterable<PrioritizedRunnable>) : TieredPrioritizedQueueView {
+class TieredPrioritizedQueue(val activeRunables: ListIterable<PrioritizedRunnable>,
+                             var targetActiveThreads: Int) : TieredPrioritizedQueueView {
     var deadlineInNanos: Long = TimeUnit.SECONDS.toNanos(10)
     var reprioritizeIntervalInNanos: Long = TimeUnit.SECONDS.toNanos(1)
 
@@ -47,9 +49,19 @@ class TieredPrioritizedQueue(activeRunables: ListIterable<PrioritizedRunnable>) 
 
     fun poll(): PrioritizedRunnable? {
         reprioritize()
+        val now = System.nanoTime()
 
-        for (tier in _tiers) {
-            return tier.poll() ?: continue
+        val tierUsage = FastList.newWithNValues(tiers.size(), {0}).apply {
+            activeRunables
+                    .aggregateBy({calculateTierIndexFromTimestamp(it, now)}, {0}, {c, _->c + 1})
+                    .forEachKeyValue {t, c -> this[t] = c} }
+
+        var requestCount = 0
+
+        for (t in 0 until tiers.size()) {
+            requestCount += tierUsage[t]
+            if (requestCount >= targetActiveThreads) { return null }
+            return _tiers[t].poll() ?: continue
         }
 
         return null

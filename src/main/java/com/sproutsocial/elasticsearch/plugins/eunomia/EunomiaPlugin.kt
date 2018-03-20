@@ -24,7 +24,7 @@ class EunomiaPlugin: Plugin() {
         clusterModule.registerClusterDynamicSetting(PrioritizedGroupThrottler.SETTINGS_MAX_GROUP_SIZE_KEY, Validator.POSITIVE_INTEGER)
         clusterModule.registerClusterDynamicSetting(PrioritizedGroupThrottler.Companion.SETTINGS_IS_ENABLED_KEY, Validator.BOOLEAN)
         clusterModule.registerClusterDynamicSetting(PrioritizingTransportService.Companion.SETTINGS_IS_ENABLED_KEY, Validator.BOOLEAN)
-        clusterModule.registerClusterDynamicSetting(PriorityDispatcher.SETTINGS_MAX_ACTIVE_THREADS_KEY, Validator.POSITIVE_INTEGER)
+        clusterModule.registerClusterDynamicSetting(PriorityDispatcher.SETTINGS_TARGET_ACTIVE_REQUESTS_KEY, Validator.POSITIVE_INTEGER)
         clusterModule.registerClusterDynamicSetting(PriorityDispatcher.SETTINGS_DEADLINE_KEY, Validator.POSITIVE_INTEGER)
     }
 

@@ -19,18 +19,18 @@ class PriorityDispatcher
     : AbstractComponent(settings) {
 
     companion object {
-        const val SETTINGS_MAX_ACTIVE_THREADS_KEY = "eunomia.priorityDispatcher.maxActiveThreads"
+        const val SETTINGS_TARGET_ACTIVE_REQUESTS_KEY = "eunomia.priorityDispatcher.targetActiveRequests"
         const val SETTINGS_DEADLINE_KEY = "eunomia.priorityDispatcher.deadlineInSeconds"
     }
 
     private val _activeRunnables = Lists.mutable.empty<PrioritizedRunnable>()
     val activeRunables: ListIterable<PrioritizedRunnable> get() = _activeRunnables
 
-    private val _pendingQueue = TieredPrioritizedQueue(activeRunables)
-    val pendingQueue: TieredPrioritizedQueueView get() = _pendingQueue
-    
-    private var maxActiveThreads = Math.max(1, EsExecutors.boundedNumberOfProcessors(settings) - 2)
+    private var targetActiveThreads = Math.max(1, EsExecutors.boundedNumberOfProcessors(settings) - 2)
     private var effectiveSettings: Settings = settings
+
+    private val _pendingQueue = TieredPrioritizedQueue(activeRunables, targetActiveThreads)
+    val pendingQueue: TieredPrioritizedQueueView get() = _pendingQueue
 
     init {
         updateComponentSettings(settings)
@@ -41,8 +41,9 @@ class PriorityDispatcher
     }
 
     private fun updateComponentSettings(settings: Settings) {
-        maxActiveThreads = settings.getAsInt(SETTINGS_MAX_ACTIVE_THREADS_KEY, Math.max(1, EsExecutors.boundedNumberOfProcessors(settings) - 2))
+        targetActiveThreads = settings.getAsInt(SETTINGS_TARGET_ACTIVE_REQUESTS_KEY, Math.max(1, EsExecutors.boundedNumberOfProcessors(settings) - 2))
         _pendingQueue.deadlineInNanos = TimeUnit.SECONDS.toNanos(settings.getAsLong(SETTINGS_DEADLINE_KEY, 10))
+        _pendingQueue.targetActiveThreads = targetActiveThreads
     }
 
     @Synchronized
@@ -54,7 +55,7 @@ class PriorityDispatcher
     }
 
     private fun doScheduling() {
-        while (_activeRunnables.size < maxActiveThreads) {
+        while (true) {
             val nextRunnable = _pendingQueue.poll() ?: return
 
             runRunnable(nextRunnable)
