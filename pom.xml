@@ -6,7 +6,7 @@
 
     <groupId>com.sproutsocial.elasticsearch.plugin</groupId>
     <artifactId>eunomia</artifactId>
-    <version>1.0.0-ES${elasticsearch.version}-SNAPSHOT</version>
+    <version>1.0.0-ES${elasticsearch.version}</version>
 
     <licenses>
         <license>
